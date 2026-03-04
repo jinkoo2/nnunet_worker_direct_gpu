@@ -110,6 +110,8 @@ def setup_dataset(zip_path: str, dataset_name: str) -> None:
     preprocessed_dest.mkdir(parents=True, exist_ok=True)
 
     plan_files = {"dataset_fingerprint.json", "nnUNetPlans.json"}
+    # dataset.json goes to both raw/ and preprocessed/ (nnUNet reads it from both)
+    dual_files = {"dataset.json"}
 
     with zipfile.ZipFile(zip_path, "r") as zf:
         for member in zf.namelist():
@@ -122,6 +124,15 @@ def setup_dataset(zip_path: str, dataset_name: str) -> None:
                 with zf.open(member) as src, open(dest, "wb") as dst:
                     shutil.copyfileobj(src, dst)
                 logger.info(f"  plan file: {basename} → {dest}")
+            elif basename in dual_files:
+                # Copy to raw/ (preserving path) and also to preprocessed/
+                raw_file = raw_dest / member
+                raw_file.parent.mkdir(parents=True, exist_ok=True)
+                with zf.open(member) as src, open(raw_file, "wb") as dst:
+                    shutil.copyfileobj(src, dst)
+                pre_file = preprocessed_dest / basename
+                shutil.copy2(raw_file, pre_file)
+                logger.info(f"  dual file: {basename} → raw/ + preprocessed/")
             else:
                 # Preserve full path under raw/: raw/Dataset###_Name/imagesTr/...
                 dest = raw_dest / member
