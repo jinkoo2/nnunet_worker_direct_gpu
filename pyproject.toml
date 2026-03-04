@@ -1,0 +1,15 @@
+[tool.poetry]
+name = "nnunet_trainer"
+version = "0.1.0"
+description = "nnUNet training worker for nnunet_dashboard"
+authors = ["Jin-Koo Kim <jinkoo2@gmail.com>"]
+packages = [{ include = "app" }]
+
+[tool.poetry.dependencies]
+python = "^3.12"
+pydantic-settings = "^2.0"
+requests = "^2.31"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
