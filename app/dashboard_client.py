@@ -61,6 +61,14 @@ class DashboardClient:
     def heartbeat(self, worker_id: str, status: str = "online") -> None:
         self._post(f"/api/workers/{worker_id}/heartbeat", json={"status": status})
 
+    def post_log(self, worker_id: str, worker_name: str, level: str, message: str) -> None:
+        self._post("/api/logs/", json={
+            "worker_id": worker_id,
+            "worker_name": worker_name,
+            "level": level,
+            "message": message,
+        })
+
     # -------------------------------------------------------------------------
     # Jobs
     # -------------------------------------------------------------------------

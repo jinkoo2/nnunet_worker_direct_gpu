@@ -2,6 +2,7 @@
 Main worker loop: register → heartbeat → poll → execute jobs.
 """
 import logging
+import queue
 import threading
 import time
 from pathlib import Path
@@ -12,6 +13,37 @@ from . import trainer
 
 logger = logging.getLogger(__name__)
 
+
+class DashboardLogHandler(logging.Handler):
+    """Forwards log records to the dashboard via a background queue thread."""
+
+    def __init__(self, client: DashboardClient, worker_id: str, worker_name: str):
+        super().__init__(level=logging.INFO)
+        self.client = client
+        self.worker_id = worker_id
+        self.worker_name = worker_name
+        self._queue: queue.Queue = queue.Queue()
+        self._thread = threading.Thread(target=self._send_loop, daemon=True)
+        self._thread.start()
+
+    def emit(self, record: logging.LogRecord):
+        try:
+            self._queue.put_nowait((record.levelname, self.format(record)))
+        except Exception:
+            pass
+
+    def _send_loop(self):
+        while True:
+            try:
+                level, message = self._queue.get(timeout=2)
+                try:
+                    self.client.post_log(self.worker_id, self.worker_name, level, message)
+                except Exception:
+                    pass
+                self._queue.task_done()
+            except queue.Empty:
+                continue
+
 _job_running = threading.Event()
 
 
@@ -20,6 +52,11 @@ def run():
 
     # Register with dashboard (retry up to 5 times)
     worker_id = _register_with_retry(client)
+
+    # Forward INFO+ logs to dashboard
+    dash_handler = DashboardLogHandler(client, worker_id, settings.WORKER_NAME)
+    dash_handler.setFormatter(logging.Formatter("%(name)s: %(message)s"))
+    logging.getLogger("app").addHandler(dash_handler)
 
     # Start heartbeat daemon thread
     hb_thread = threading.Thread(
