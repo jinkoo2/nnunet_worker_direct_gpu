@@ -159,10 +159,13 @@ def is_dataset_downloaded(dataset_id: str) -> bool:
     return zip_path.exists() and zip_path.stat().st_size > 0
 
 
+PREPROCESSING_FLAG = "preprocessing_completed.txt"
+
+
 def is_preprocessing_done(dataset_name: str) -> bool:
-    """Return True if nnUNet preprocessing output (.npz files) already exists."""
-    preprocessed = Path(settings.DATA_DIR) / "preprocessed" / dataset_name
-    return preprocessed.exists() and any(preprocessed.rglob("*.npz"))
+    """Return True if the preprocessing completion flag file exists."""
+    flag = Path(settings.DATA_DIR) / "preprocessed" / dataset_name / PREPROCESSING_FLAG
+    return flag.exists()
 
 
 # ---------------------------------------------------------------------------
@@ -233,6 +236,9 @@ def run_preprocess(
     if proc.returncode != 0:
         raise RuntimeError(f"Preprocessing failed (exit {proc.returncode}). See {log_file}")
 
+    # Write flag file so future jobs skip preprocessing for this dataset
+    flag = Path(settings.DATA_DIR) / "preprocessed" / dataset_name / PREPROCESSING_FLAG
+    flag.write_text(f"Preprocessing completed for job {job_id}\n")
     logger.info(f"Preprocessing complete for {dataset_name}")
 
 
