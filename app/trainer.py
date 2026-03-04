@@ -6,6 +6,7 @@ import logging
 import os
 import re
 import shutil
+import signal
 import subprocess
 import threading
 import time
@@ -23,15 +24,22 @@ class JobCancelled(Exception):
 
 
 def _cancel_watcher(cancel_event: threading.Event, proc: subprocess.Popen) -> None:
-    """Block until cancel_event is set, then terminate the subprocess."""
+    """Block until cancel_event is set, then kill the entire process group."""
     cancel_event.wait()
     if proc.poll() is None:
-        logger.info("Cancellation received — terminating subprocess...")
-        proc.terminate()
+        logger.info("Cancellation received — sending SIGTERM to process group...")
         try:
-            proc.wait(timeout=15)
+            os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+        try:
+            proc.wait(timeout=10)
         except subprocess.TimeoutExpired:
-            proc.kill()
+            logger.info("Process group did not exit after SIGTERM — sending SIGKILL...")
+            try:
+                os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+            except ProcessLookupError:
+                pass
 
 
 # ---------------------------------------------------------------------------
@@ -225,6 +233,7 @@ def run_preprocess(
         stderr=subprocess.STDOUT,
         text=True,
         bufsize=1,
+        start_new_session=True,
     )
 
     if cancel_event is not None:
@@ -303,6 +312,7 @@ def run_train_fold(
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
+        start_new_session=True,
     )
 
     if cancel_event is not None:
