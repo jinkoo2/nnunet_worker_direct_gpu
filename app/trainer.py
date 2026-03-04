@@ -43,7 +43,7 @@ _RE_TRAIN_LOSS = re.compile(r'train_loss\s+([0-9.e+\-]+)')
 _RE_VAL_LOSS = re.compile(r'val_loss\s+([0-9.e+\-]+)')
 _RE_DICE = re.compile(r'Pseudo dice \[([^\]]+)\]')
 _RE_EPOCH_TIME = re.compile(r'Epoch time:\s*([0-9.]+)\s*s')
-_RE_NUMBER = re.compile(r'[-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?')
+_RE_PARENS = re.compile(r'\(([^)]+)\)')
 
 
 # ---------------------------------------------------------------------------
@@ -416,10 +416,12 @@ def _parse_all_epochs(log_content: str) -> dict:
         if m:
             vals = [v.strip() for v in m.group(1).split(",")]
             try:
-                # Handle both plain floats and np.float32(0.9277) format
-                current["pseudo_dice"] = json.dumps([
-                    float(_RE_NUMBER.search(v).group()) for v in vals
-                ])
+                # Handle both plain floats and np.float32(0.9277) format:
+                # prefer the value inside parentheses, fall back to the raw string
+                def _to_float(s):
+                    pm = _RE_PARENS.search(s)
+                    return float(pm.group(1).strip() if pm else s)
+                current["pseudo_dice"] = json.dumps([_to_float(v) for v in vals])
             except Exception:
                 current["pseudo_dice"] = json.dumps(vals)
             continue
