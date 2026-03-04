@@ -86,6 +86,9 @@ class DashboardClient:
     # Datasets
     # -------------------------------------------------------------------------
 
+    def get_job(self, job_id: str) -> dict:
+        return self._get(f"/api/jobs/{job_id}")
+
     def get_dataset(self, dataset_id: str) -> dict:
         return self._get(f"/api/datasets/{dataset_id}")
 

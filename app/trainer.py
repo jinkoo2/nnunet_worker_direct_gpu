@@ -17,6 +17,23 @@ from .config import settings
 
 logger = logging.getLogger(__name__)
 
+
+class JobCancelled(Exception):
+    """Raised when a cancel_event is set while a subprocess is running."""
+
+
+def _cancel_watcher(cancel_event: threading.Event, proc: subprocess.Popen) -> None:
+    """Block until cancel_event is set, then terminate the subprocess."""
+    cancel_event.wait()
+    if proc.poll() is None:
+        logger.info("Cancellation received — terminating subprocess...")
+        proc.terminate()
+        try:
+            proc.wait(timeout=15)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+
+
 # ---------------------------------------------------------------------------
 # Regex patterns for nnUNet training log
 # ---------------------------------------------------------------------------
@@ -182,6 +199,7 @@ def run_preprocess(
     job_id: str,
     dataset_name: str,
     progress_callback: Callable,
+    cancel_event: Optional[threading.Event] = None,
 ) -> None:
     """
     Run nnUNetv2_preprocess via scripts/preprocess.sh.
@@ -207,6 +225,9 @@ def run_preprocess(
         text=True,
         bufsize=1,
     )
+
+    if cancel_event is not None:
+        threading.Thread(target=_cancel_watcher, args=(cancel_event, proc), daemon=True).start()
 
     done_images = 0
     start_time = time.time()
@@ -239,6 +260,9 @@ def run_preprocess(
     except Exception:
         pass
 
+    if cancel_event is not None and cancel_event.is_set():
+        raise JobCancelled("Job was cancelled during preprocessing")
+
     if proc.returncode != 0:
         raise RuntimeError(f"Preprocessing failed (exit {proc.returncode}). See {log_file}")
 
@@ -259,6 +283,7 @@ def run_train_fold(
     fold: int,
     progress_callback: Callable,
     log_upload_callback: Callable,
+    cancel_event: Optional[threading.Event] = None,
 ) -> None:
     """
     Run nnUNetv2_train for a single fold via scripts/train.sh.
@@ -278,6 +303,9 @@ def run_train_fold(
         stderr=subprocess.STDOUT,
         text=True,
     )
+
+    if cancel_event is not None:
+        threading.Thread(target=_cancel_watcher, args=(cancel_event, proc), daemon=True).start()
 
     stop_event = threading.Event()
 
@@ -345,6 +373,9 @@ def run_train_fold(
             log_upload_callback(fold, log_path.read_text(errors="replace"))
         except Exception as e:
             logger.warning(f"Final log upload failed: {e}")
+
+    if cancel_event is not None and cancel_event.is_set():
+        raise JobCancelled(f"Job was cancelled during fold {fold} training")
 
     if proc.returncode != 0:
         raise RuntimeError(f"Training fold {fold} failed (exit {proc.returncode})")

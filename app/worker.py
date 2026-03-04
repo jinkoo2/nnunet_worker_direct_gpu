@@ -10,6 +10,7 @@ from pathlib import Path
 from .config import settings
 from .dashboard_client import DashboardClient
 from . import trainer, notifier
+from .trainer import JobCancelled
 
 logger = logging.getLogger(__name__)
 
@@ -100,6 +101,24 @@ def _register_with_retry(client: DashboardClient, max_attempts: int = 10) -> str
             time.sleep(wait)
 
 
+def _poll_cancellation(
+    client: DashboardClient,
+    job_id: str,
+    cancel_event: threading.Event,
+    interval: int = 30,
+) -> None:
+    """Poll the dashboard every `interval` seconds; set cancel_event if job is cancelled."""
+    while not cancel_event.wait(interval):
+        try:
+            job = client.get_job(job_id)
+            if job.get("status") == "cancelled":
+                logger.info(f"Job {job_id[:8]}… cancellation detected — stopping worker")
+                cancel_event.set()
+                break
+        except Exception as e:
+            logger.warning(f"Cancellation poll failed: {e}")
+
+
 def _heartbeat_loop(client: DashboardClient, worker_id: str):
     while True:
         try:
@@ -118,6 +137,12 @@ def _execute_job(client: DashboardClient, job: dict):
     logger.info(f"=== Job {job_id[:8]}… | dataset={dataset_id[:8]}… | config={configuration} ===")
     _job_running.set()
     wn = settings.WORKER_NAME
+
+    cancel_event = threading.Event()
+    cancel_thread = threading.Thread(
+        target=_poll_cancellation, args=(client, job_id, cancel_event), daemon=True
+    )
+    cancel_thread.start()
 
     try:
         # 1. Acknowledge job
@@ -163,7 +188,7 @@ def _execute_job(client: DashboardClient, job: dict):
             def preprocess_progress(total, done, mean_s):
                 client.report_preprocessing_progress(job_id, total, done, mean_s)
 
-            trainer.run_preprocess(job_id, dataset_name, preprocess_progress)
+            trainer.run_preprocess(job_id, dataset_name, preprocess_progress, cancel_event)
             notifier.on_preprocess_complete(wn, job_id)
 
         # 6. Train all 5 folds
@@ -197,6 +222,7 @@ def _execute_job(client: DashboardClient, job: dict):
                 fold,
                 progress_callback=make_progress_cb(fold),
                 log_upload_callback=make_log_cb(fold),
+                cancel_event=cancel_event,
             )
             notifier.on_fold_complete(wn, job_id, fold)
 
@@ -221,6 +247,10 @@ def _execute_job(client: DashboardClient, job: dict):
         logger.info(f"=== Job {job_id[:8]}… DONE ===")
         notifier.on_job_done(wn, job_id)
 
+    except JobCancelled:
+        logger.info(f"Job {job_id[:8]}… stopped — cancelled by user")
+        notifier.on_exception(wn, job_id, "cancelled by user")
+        # Status is already 'cancelled' in the DB — do not overwrite
     except Exception as e:
         logger.error(f"Job {job_id[:8]}… FAILED: {e}", exc_info=True)
         notifier.on_error(wn, job_id, str(e))
@@ -229,4 +259,5 @@ def _execute_job(client: DashboardClient, job: dict):
         except Exception:
             pass
     finally:
+        cancel_event.set()  # stop the poll thread
         _job_running.clear()
