@@ -64,15 +64,21 @@ def get_nnunet_env() -> dict:
     return env
 
 
-def get_training_log_path(dataset_name: str, configuration: str, fold: int) -> Path:
+def get_fold_dir(dataset_name: str, configuration: str, fold: int) -> Path:
     return (
         Path(settings.DATA_DIR)
         / "results"
         / dataset_name
         / f"nnUNetTrainer__nnUNetPlans__{configuration}"
         / f"fold_{fold}"
-        / "training_log.txt"
     )
+
+
+def find_latest_training_log(dataset_name: str, configuration: str, fold: int) -> Optional[Path]:
+    """Return the most recently modified training_log_*.txt in the fold directory, or None."""
+    fold_dir = get_fold_dir(dataset_name, configuration, fold)
+    logs = sorted(fold_dir.glob("training_log_*.txt"), key=lambda p: p.stat().st_mtime, reverse=True)
+    return logs[0] if logs else None
 
 
 def get_validation_summary_path(dataset_name: str, configuration: str, fold: int) -> Path:
@@ -264,7 +270,6 @@ def run_train_fold(
 
     script = get_scripts_dir() / "train.sh"
     env = get_nnunet_env()
-    log_path = get_training_log_path(dataset_name, configuration, fold)
 
     proc = subprocess.Popen(
         ["bash", str(script), dataset_name, configuration, str(fold)],
@@ -283,7 +288,9 @@ def run_train_fold(
         while not stop_event.is_set():
             stop_event.wait(5)
 
-            if not log_path.exists():
+            # Find the most recent training_log_*.txt (name includes datetime)
+            log_path = find_latest_training_log(dataset_name, configuration, fold)
+            if log_path is None:
                 continue
 
             try:
@@ -331,8 +338,9 @@ def run_train_fold(
     stop_event.set()
     monitor_thread.join(timeout=10)
 
-    # Final log upload
-    if log_path.exists():
+    # Final log upload using the most recent log file
+    log_path = find_latest_training_log(dataset_name, configuration, fold)
+    if log_path is not None:
         try:
             log_upload_callback(fold, log_path.read_text(errors="replace"))
         except Exception as e:
