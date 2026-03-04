@@ -9,7 +9,7 @@ from pathlib import Path
 
 from .config import settings
 from .dashboard_client import DashboardClient
-from . import trainer
+from . import trainer, notifier
 
 logger = logging.getLogger(__name__)
 
@@ -76,6 +76,7 @@ def run():
                 logger.debug("No pending jobs.")
         except Exception as e:
             logger.error(f"Error in poll loop: {e}", exc_info=True)
+            notifier.on_exception(settings.WORKER_NAME, "poll loop", str(e))
 
         time.sleep(settings.POLL_INTERVAL_S)
 
@@ -89,6 +90,7 @@ def _register_with_retry(client: DashboardClient, max_attempts: int = 10) -> str
                 f"Registered as '{settings.WORKER_NAME}' (id={worker_id[:8]}…) "
                 f"at {settings.DASHBOARD_URL}"
             )
+            notifier.on_registered(settings.WORKER_NAME, worker_id, settings.DASHBOARD_URL)
             return worker_id
         except Exception as e:
             wait = min(30, 5 * attempt)
@@ -115,6 +117,7 @@ def _execute_job(client: DashboardClient, job: dict):
 
     logger.info(f"=== Job {job_id[:8]}… | dataset={dataset_id[:8]}… | config={configuration} ===")
     _job_running.set()
+    wn = settings.WORKER_NAME
 
     try:
         # 1. Acknowledge job
@@ -124,6 +127,7 @@ def _execute_job(client: DashboardClient, job: dict):
         dataset_info = client.get_dataset(dataset_id)
         dataset_name = dataset_info["name"]
         logger.info(f"Dataset name: {dataset_name}")
+        notifier.on_job_start(wn, job_id, dataset_name, configuration)
 
         # 3. Download ZIP
         data_dir = Path(settings.DATA_DIR)
@@ -131,26 +135,32 @@ def _execute_job(client: DashboardClient, job: dict):
         downloads_dir.mkdir(parents=True, exist_ok=True)
         zip_path = downloads_dir / f"{dataset_id}.zip"
 
+        notifier.on_download_start(wn, job_id, dataset_name)
         client.download_dataset(dataset_id, str(zip_path))
+        mb = zip_path.stat().st_size / 1024 / 1024
+        notifier.on_download_complete(wn, job_id, mb)
 
         # 4. Extract to nnUNet directory layout
         trainer.setup_dataset(str(zip_path), dataset_name)
 
         # 5. Preprocess
         client.update_job_status(job_id, "preprocessing")
+        num_images = trainer._read_num_training(dataset_name)
+        notifier.on_preprocess_start(wn, job_id, dataset_name, num_images)
 
         def preprocess_progress(total, done, mean_s):
             client.report_preprocessing_progress(job_id, total, done, mean_s)
 
         trainer.run_preprocess(job_id, dataset_name, preprocess_progress)
+        notifier.on_preprocess_complete(wn, job_id)
 
         # 6. Train all 5 folds
         client.update_job_status(job_id, "training")
 
         for fold in range(5):
             logger.info(f"--- Fold {fold}/4 ---")
+            notifier.on_fold_start(wn, job_id, fold)
 
-            # Use default-arg binding to capture fold value in closure
             def make_progress_cb(f):
                 def cb(fold, epoch, learning_rate, train_loss, val_loss, pseudo_dice, epoch_time_s):
                     client.report_training_progress(
@@ -176,6 +186,7 @@ def _execute_job(client: DashboardClient, job: dict):
                 progress_callback=make_progress_cb(fold),
                 log_upload_callback=make_log_cb(fold),
             )
+            notifier.on_fold_complete(wn, job_id, fold)
 
             # Report validation result for this fold
             summary = trainer.read_validation_result(dataset_name, configuration, fold)
@@ -187,16 +198,20 @@ def _execute_job(client: DashboardClient, job: dict):
 
         # 7. Export + upload model
         client.update_job_status(job_id, "uploading")
+        notifier.on_export_start(wn, job_id)
         model_zip = trainer.export_model(dataset_name, configuration)
         client.upload_model(job_id, str(model_zip))
         logger.info("Model uploaded.")
+        notifier.on_upload_complete(wn, job_id)
 
         # 8. Done
         client.update_job_status(job_id, "done")
         logger.info(f"=== Job {job_id[:8]}… DONE ===")
+        notifier.on_job_done(wn, job_id)
 
     except Exception as e:
         logger.error(f"Job {job_id[:8]}… FAILED: {e}", exc_info=True)
+        notifier.on_error(wn, job_id, str(e))
         try:
             client.update_job_status(job_id, "failed", error_message=str(e))
         except Exception:

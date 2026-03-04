@@ -6,6 +6,9 @@ class Settings(BaseSettings):
     DASHBOARD_URL: str = "http://localhost:9333"
     DASHBOARD_API_KEY: str = "changeme"
 
+    # Notifications (optional)
+    GOOGLE_CHAT_WEBHOOK_URL: str = ""
+
     # Worker identity (reported at registration)
     WORKER_NAME: str = "worker-01"
     WORKER_HOSTNAME: str = ""
