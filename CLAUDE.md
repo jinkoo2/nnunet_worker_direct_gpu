@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Long-running nnUNet training worker. Registers with `nnunet_dashboard`, polls for admin-assigned training jobs, downloads datasets, runs nnUNet preprocessing + training via subprocess, streams progress back to the dashboard, and uploads the finished model ZIP for admin approval.
+`nnunet_trainer_direct_gpu` — long-running nnUNet training worker with direct host GPU access. Registers with `nnunet_dashboard`, polls for admin-assigned training jobs, downloads datasets, runs nnUNet preprocessing + training via subprocess, streams progress back to the dashboard, and uploads the finished model ZIP for admin approval.
 
 ## Commands
 
@@ -12,7 +12,8 @@ Long-running nnUNet training worker. Registers with `nnunet_dashboard`, polls fo
 # Setup
 conda create -n nnunet_trainer python=3.12 -y
 conda activate nnunet_trainer
-pip install nnunetv2 pydantic-settings requests
+pip install nnunetv2
+pip install -r requirements.txt
 
 # Run
 cp .env.example .env

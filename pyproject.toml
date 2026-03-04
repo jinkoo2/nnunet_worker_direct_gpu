@@ -1,7 +1,7 @@
 [tool.poetry]
-name = "nnunet_trainer"
+name = "nnunet_trainer_direct_gpu"
 version = "0.1.0"
-description = "nnUNet training worker for nnunet_dashboard"
+description = "nnUNet training worker with direct GPU access for nnunet_dashboard"
 authors = ["Jin-Koo Kim <jinkoo2@gmail.com>"]
 packages = [{ include = "app" }]
 

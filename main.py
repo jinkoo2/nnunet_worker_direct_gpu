@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-nnunet_trainer — long-running worker for nnunet_dashboard.
+nnunet_trainer_direct_gpu — long-running worker with direct host GPU access for nnunet_dashboard.
 
 Usage:
     conda activate nnunet_trainer

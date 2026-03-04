@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     GOOGLE_CHAT_WEBHOOK_URL: str = ""
 
     # Worker identity (reported at registration)
-    WORKER_NAME: str = "worker-01"
+    WORKER_NAME: str = "worker-ai01"
     WORKER_HOSTNAME: str = ""
     GPU_NAME: str = ""
     GPU_MEMORY_GB: float = 0.0
