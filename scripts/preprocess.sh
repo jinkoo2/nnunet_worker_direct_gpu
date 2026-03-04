@@ -30,8 +30,8 @@ echo "nnUNet_results:      $nnUNet_results"
 echo "Dataset num:         $DATASET_NUM"
 
 # Conda activation (optional)
-if [ -n "$CONDA_ENV" ] && [ -f "${CONDA_PROFILE:-/home/jk/miniconda3/etc/profile.d/conda.sh}" ]; then
-    . "${CONDA_PROFILE:-/home/jk/miniconda3/etc/profile.d/conda.sh}"
+if [ -n "$CONDA_ENV" ] && [ -f "${CONDA_PROFILE:-/opt/miniconda3/etc/profile.d/conda.sh}" ]; then
+    . "${CONDA_PROFILE:-/opt/miniconda3/etc/profile.d/conda.sh}"
     conda activate "$CONDA_ENV"
     echo "Activated conda env: $CONDA_ENV"
 fi

@@ -47,9 +47,9 @@ cp .env.example .env
 | `SYSTEM_MEMORY_GB` | `0.0` | System RAM in GB |
 | `POLL_INTERVAL_S` | `30` | Seconds between job polls |
 | `HEARTBEAT_INTERVAL_S` | `60` | Seconds between heartbeats |
-| `DATA_DIR` | `/home/jk/data/nnunet_trainer_data` | Root directory for datasets, results, exports |
+| `DATA_DIR` | `/data/nnunet_trainer_data` | Root directory for datasets, results, exports |
 | `CONDA_ENV` | `nnunet_trainer` | Conda environment with nnunetv2 installed |
-| `CONDA_PROFILE` | `/home/jk/miniconda3/etc/profile.d/conda.sh` | Path to conda init script |
+| `CONDA_PROFILE` | `/opt/miniconda3/etc/profile.d/conda.sh` | Path to conda init script |
 | `DEVICE` | `cuda` | Training device (`cuda` or `cpu`) |
 | `NUM_GPUS` | `1` | Number of GPUs for training |
 | `NUM_PREPROCESSING_WORKERS` | `8` | `-np` workers for `nnUNetv2_preprocess` |

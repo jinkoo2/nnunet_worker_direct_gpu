@@ -116,9 +116,9 @@ DATA_DIR/
 | `CPU_CORES` | `0` | CPU core count |
 | `POLL_INTERVAL_S` | `30` | Seconds between job polls |
 | `HEARTBEAT_INTERVAL_S` | `60` | Seconds between heartbeats |
-| `DATA_DIR` | `/home/jk/data/nnunet_trainer_data` | Working directory |
+| `DATA_DIR` | `/data/nnunet_trainer_data` | Working directory |
 | `CONDA_ENV` | `nnunet_trainer` | Conda env with nnunetv2 |
-| `CONDA_PROFILE` | `/home/jk/miniconda3/etc/profile.d/conda.sh` | Conda init script |
+| `CONDA_PROFILE` | `/opt/miniconda3/etc/profile.d/conda.sh` | Conda init script |
 | `DEVICE` | `cuda` | Training device |
 | `NUM_GPUS` | `1` | Number of GPUs |
 | `NUM_PREPROCESSING_WORKERS` | `8` | `-np` argument for preprocessing |

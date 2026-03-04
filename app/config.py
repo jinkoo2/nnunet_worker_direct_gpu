@@ -22,10 +22,10 @@ class Settings(BaseSettings):
     HEARTBEAT_INTERVAL_S: int = 60  # seconds between heartbeats
 
     # Paths
-    DATA_DIR: str = "/home/jk/data/nnunet_trainer_data"
+    DATA_DIR: str = "/data/nnunet_trainer_data"
     SCRIPTS_DIR: str = ""           # auto-detected relative to main.py if empty
     CONDA_ENV: str = "nnunet_trainer"
-    CONDA_PROFILE: str = "/home/jk/miniconda3/etc/profile.d/conda.sh"
+    CONDA_PROFILE: str = "/opt/miniconda3/etc/profile.d/conda.sh"
 
     # nnUNet
     DEVICE: str = "cuda"
