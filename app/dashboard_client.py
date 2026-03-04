@@ -54,6 +54,7 @@ class DashboardClient:
                 "cpu_cores": settings.CPU_CORES or None,
                 "gpu_memory_gb": settings.GPU_MEMORY_GB or None,
                 "gpu_name": settings.GPU_NAME or None,
+                "system_memory_gb": settings.SYSTEM_MEMORY_GB or None,
             },
         )
 

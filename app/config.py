@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     GPU_NAME: str = ""
     GPU_MEMORY_GB: float = 0.0
     CPU_CORES: int = 0
+    SYSTEM_MEMORY_GB: float = 0.0
 
     # Timing
     POLL_INTERVAL_S: int = 30       # seconds between job polls
