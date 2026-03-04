@@ -153,6 +153,18 @@ def _read_num_training(dataset_name: str) -> int:
         return 0
 
 
+def is_dataset_downloaded(dataset_id: str) -> bool:
+    """Return True if the dataset ZIP is already on disk."""
+    zip_path = Path(settings.DATA_DIR) / "downloads" / f"{dataset_id}.zip"
+    return zip_path.exists() and zip_path.stat().st_size > 0
+
+
+def is_preprocessing_done(dataset_name: str) -> bool:
+    """Return True if nnUNet preprocessing output (.npz files) already exists."""
+    preprocessed = Path(settings.DATA_DIR) / "preprocessed" / dataset_name
+    return preprocessed.exists() and any(preprocessed.rglob("*.npz"))
+
+
 # ---------------------------------------------------------------------------
 # Preprocessing
 # ---------------------------------------------------------------------------

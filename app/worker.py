@@ -129,30 +129,42 @@ def _execute_job(client: DashboardClient, job: dict):
         logger.info(f"Dataset name: {dataset_name}")
         notifier.on_job_start(wn, job_id, dataset_name, configuration)
 
-        # 3. Download ZIP
+        # 3. Download ZIP (skip if already on disk)
         data_dir = Path(settings.DATA_DIR)
         downloads_dir = data_dir / "downloads"
         downloads_dir.mkdir(parents=True, exist_ok=True)
         zip_path = downloads_dir / f"{dataset_id}.zip"
 
-        notifier.on_download_start(wn, job_id, dataset_name)
-        client.download_dataset(dataset_id, str(zip_path))
-        mb = zip_path.stat().st_size / 1024 / 1024
-        notifier.on_download_complete(wn, job_id, mb)
+        if trainer.is_dataset_downloaded(dataset_id):
+            mb = zip_path.stat().st_size / 1024 / 1024
+            logger.info(f"Dataset ZIP already on disk ({mb:.1f} MB), skipping download")
+        else:
+            notifier.on_download_start(wn, job_id, dataset_name)
+            client.download_dataset(dataset_id, str(zip_path))
+            mb = zip_path.stat().st_size / 1024 / 1024
+            notifier.on_download_complete(wn, job_id, mb)
 
-        # 4. Extract to nnUNet directory layout
-        trainer.setup_dataset(str(zip_path), dataset_name)
+        # 4. Extract to nnUNet directory layout (skip if raw data already present)
+        raw_dir = data_dir / "raw" / dataset_name
+        if raw_dir.exists():
+            logger.info(f"Raw dataset already extracted to {raw_dir}, skipping extraction")
+        else:
+            trainer.setup_dataset(str(zip_path), dataset_name)
 
-        # 5. Preprocess
+        # 5. Preprocess (skip if .npz output already exists)
         client.update_job_status(job_id, "preprocessing")
-        num_images = trainer._read_num_training(dataset_name)
-        notifier.on_preprocess_start(wn, job_id, dataset_name, num_images)
+        if trainer.is_preprocessing_done(dataset_name):
+            logger.info(f"Preprocessing already done for {dataset_name}, skipping")
+            notifier.on_preprocess_complete(wn, job_id)
+        else:
+            num_images = trainer._read_num_training(dataset_name)
+            notifier.on_preprocess_start(wn, job_id, dataset_name, num_images)
 
-        def preprocess_progress(total, done, mean_s):
-            client.report_preprocessing_progress(job_id, total, done, mean_s)
+            def preprocess_progress(total, done, mean_s):
+                client.report_preprocessing_progress(job_id, total, done, mean_s)
 
-        trainer.run_preprocess(job_id, dataset_name, preprocess_progress)
-        notifier.on_preprocess_complete(wn, job_id)
+            trainer.run_preprocess(job_id, dataset_name, preprocess_progress)
+            notifier.on_preprocess_complete(wn, job_id)
 
         # 6. Train all 5 folds
         client.update_job_status(job_id, "training")
