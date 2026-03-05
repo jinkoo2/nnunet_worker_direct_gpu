@@ -1,9 +1,13 @@
 import os
 import logging
+import time
 import requests
 from .config import settings
 
 logger = logging.getLogger(__name__)
+
+_RETRY_EXCEPTIONS = (requests.ConnectionError, requests.Timeout)
+_MAX_ATTEMPTS = 5
 
 
 class DashboardClient:
@@ -11,35 +15,45 @@ class DashboardClient:
         self.base = settings.DASHBOARD_URL.rstrip("/")
         self.headers = {"X-Api-Key": settings.DASHBOARD_API_KEY}
 
+    def _request(self, method: str, path: str, **kwargs) -> dict:
+        """HTTP request with retry on connection errors and 5xx responses."""
+        url = f"{self.base}{path}"
+        headers = dict(self.headers)
+        if kwargs.get("files"):
+            headers.pop("Content-Type", None)
+        for attempt in range(1, _MAX_ATTEMPTS + 1):
+            try:
+                r = requests.request(method, url, headers=headers, **kwargs)
+                r.raise_for_status()
+                return r.json()
+            except _RETRY_EXCEPTIONS as e:
+                if attempt == _MAX_ATTEMPTS:
+                    raise
+                wait = min(60, 10 * attempt)
+                logger.warning(
+                    f"Dashboard unreachable ({method} {path}, attempt {attempt}/{_MAX_ATTEMPTS}): {e}. "
+                    f"Retrying in {wait}s…"
+                )
+                time.sleep(wait)
+            except requests.HTTPError as e:
+                if e.response is not None and e.response.status_code >= 500 and attempt < _MAX_ATTEMPTS:
+                    wait = min(60, 10 * attempt)
+                    logger.warning(
+                        f"Server error {e.response.status_code} ({method} {path}, attempt {attempt}/{_MAX_ATTEMPTS}). "
+                        f"Retrying in {wait}s…"
+                    )
+                    time.sleep(wait)
+                else:
+                    raise
+
     def _get(self, path, params=None):
-        r = requests.get(
-            f"{self.base}{path}", headers=self.headers, params=params, timeout=30
-        )
-        r.raise_for_status()
-        return r.json()
+        return self._request("GET", path, params=params, timeout=30)
 
     def _post(self, path, json=None, data=None, files=None, timeout=30):
-        # Don't send Content-Type header when using files (requests sets it with boundary)
-        headers = dict(self.headers)
-        if files:
-            headers.pop("Content-Type", None)
-        r = requests.post(
-            f"{self.base}{path}",
-            headers=headers,
-            json=json,
-            data=data,
-            files=files,
-            timeout=timeout,
-        )
-        r.raise_for_status()
-        return r.json()
+        return self._request("POST", path, json=json, data=data, files=files, timeout=timeout)
 
     def _put(self, path, json=None):
-        r = requests.put(
-            f"{self.base}{path}", headers=self.headers, json=json, timeout=30
-        )
-        r.raise_for_status()
-        return r.json()
+        return self._request("PUT", path, json=json, timeout=30)
 
     # -------------------------------------------------------------------------
     # Workers
@@ -94,19 +108,35 @@ class DashboardClient:
 
     def download_dataset(self, dataset_id: str, dest_path: str) -> None:
         logger.info(f"Downloading dataset {dataset_id} → {dest_path}")
-        r = requests.get(
-            f"{self.base}/api/datasets/{dataset_id}/download",
-            headers=self.headers,
-            stream=True,
-            timeout=3600,
-        )
-        r.raise_for_status()
-        downloaded = 0
-        with open(dest_path, "wb") as f:
-            for chunk in r.iter_content(chunk_size=8 * 1024 * 1024):
-                f.write(chunk)
-                downloaded += len(chunk)
-        logger.info(f"Download complete: {downloaded / 1024 / 1024:.1f} MB")
+        for attempt in range(1, _MAX_ATTEMPTS + 1):
+            try:
+                r = requests.get(
+                    f"{self.base}/api/datasets/{dataset_id}/download",
+                    headers=self.headers,
+                    stream=True,
+                    timeout=3600,
+                )
+                r.raise_for_status()
+                downloaded = 0
+                with open(dest_path, "wb") as f:
+                    for chunk in r.iter_content(chunk_size=8 * 1024 * 1024):
+                        f.write(chunk)
+                        downloaded += len(chunk)
+                logger.info(f"Download complete: {downloaded / 1024 / 1024:.1f} MB")
+                return
+            except _RETRY_EXCEPTIONS as e:
+                if attempt == _MAX_ATTEMPTS:
+                    raise
+                wait = min(60, 10 * attempt)
+                logger.warning(f"Dataset download failed (attempt {attempt}/{_MAX_ATTEMPTS}): {e}. Retrying in {wait}s…")
+                time.sleep(wait)
+            except requests.HTTPError as e:
+                if e.response is not None and e.response.status_code >= 500 and attempt < _MAX_ATTEMPTS:
+                    wait = min(60, 10 * attempt)
+                    logger.warning(f"Dataset download server error {e.response.status_code} (attempt {attempt}/{_MAX_ATTEMPTS}). Retrying in {wait}s…")
+                    time.sleep(wait)
+                else:
+                    raise
 
     # -------------------------------------------------------------------------
     # Progress reporting
@@ -149,13 +179,29 @@ class DashboardClient:
         )
 
     def upload_log(self, job_id: str, fold: int, text: str) -> None:
-        r = requests.post(
-            f"{self.base}/api/jobs/{job_id}/log/{fold}",
-            headers=self.headers,
-            data=text.encode("utf-8"),
-            timeout=60,
-        )
-        r.raise_for_status()
+        for attempt in range(1, _MAX_ATTEMPTS + 1):
+            try:
+                r = requests.post(
+                    f"{self.base}/api/jobs/{job_id}/log/{fold}",
+                    headers=self.headers,
+                    data=text.encode("utf-8"),
+                    timeout=60,
+                )
+                r.raise_for_status()
+                return
+            except _RETRY_EXCEPTIONS as e:
+                if attempt == _MAX_ATTEMPTS:
+                    raise
+                wait = min(60, 10 * attempt)
+                logger.warning(f"Log upload failed (attempt {attempt}/{_MAX_ATTEMPTS}): {e}. Retrying in {wait}s…")
+                time.sleep(wait)
+            except requests.HTTPError as e:
+                if e.response is not None and e.response.status_code >= 500 and attempt < _MAX_ATTEMPTS:
+                    wait = min(60, 10 * attempt)
+                    logger.warning(f"Log upload server error {e.response.status_code} (attempt {attempt}/{_MAX_ATTEMPTS}). Retrying in {wait}s…")
+                    time.sleep(wait)
+                else:
+                    raise
 
     def upload_model(self, job_id: str, zip_path: str) -> dict:
         with open(zip_path, "rb") as f:

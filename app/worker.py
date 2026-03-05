@@ -229,8 +229,11 @@ def _execute_job(client: DashboardClient, job: dict):
             # Report validation result for this fold
             summary = trainer.read_validation_result(dataset_name, configuration, fold)
             if summary:
-                client.report_validation_result(job_id, fold, summary)
-                logger.info(f"Validation result reported for fold {fold}")
+                try:
+                    client.report_validation_result(job_id, fold, summary)
+                    logger.info(f"Validation result reported for fold {fold}")
+                except Exception as e:
+                    logger.warning(f"Failed to report validation result for fold {fold}: {e}")
             else:
                 logger.warning(f"No validation summary found for fold {fold}")
 
